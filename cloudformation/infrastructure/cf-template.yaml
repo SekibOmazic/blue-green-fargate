@@ -1,0 +1,485 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: The CloudFormation template for the Fargate ECS Cluster.
+
+Parameters:
+  ContainerPort:
+    Type: Number
+  ImageURI:
+    Type: String
+  EcrRepoName:
+    Type: String
+
+Transform:
+  - "AWS::CodeDeployBlueGreen"
+
+Hooks:
+  CodeDeployBlueGreenHook:
+    Type: AWS::CodeDeploy::BlueGreen
+    Properties:
+      TrafficRoutingConfig:
+       #CustomDeploymentFargateLinear1Of3in1Minutes
+        Type: TimeBasedLinear
+        TimeBasedLinear:
+          StepPercentage: 34
+          BakeTimeMins: 1
+      AdditionalOptions:
+        # After canary period, shift 100% of prod traffic, then wait 2 minutes
+        TerminationWaitTimeInMinutes: 2
+      Applications:
+        - Target:
+            Type: AWS::ECS::Service
+            LogicalID: Service
+          ECSAttributes:
+            TaskDefinitions:
+              - TaskDefinitionBlue
+              - TaskDefinitionGreen
+            TaskSets:
+              - TaskSetBlue
+              - TaskSetGreen
+            TrafficRouting:
+              ProdTrafficRoute:
+                Type: AWS::ElasticLoadBalancingV2::Listener
+                LogicalID: ProductionListener
+              TestTrafficRoute:
+                Type: AWS::ElasticLoadBalancingV2::Listener
+                LogicalID: TestListener
+              TargetGroups:
+                - ServiceTargetGroupBlue
+                - ServiceTargetGroupGreen
+
+Resources:
+  ##################
+  # INFRASTRUCTURE
+  ##################
+
+  # Create a VPC
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties: 
+      CidrBlock: 172.10.0.0/16
+      EnableDnsHostnames: True
+      EnableDnsSupport: True
+
+  # Create a Subnet
+  SubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 172.10.1.0/24
+      VpcId: !Ref VPC
+      AvailabilityZone: !Join ['', [!Ref "AWS::Region", 'a']]
+
+  # Create a Subnet
+  SubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      CidrBlock: 172.10.2.0/24
+      VpcId: !Ref VPC
+      AvailabilityZone: !Join ['', [!Ref "AWS::Region", 'b']]
+
+  # Create a route table to allow access to internet
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+
+  # Create a Route to allow access to internet using an internet gateway
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VPCInternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  # Attach Public Route to SubnetA
+  SubnetAPublicRouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: 
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref SubnetA
+
+  # Attach Public Route to SubnetB
+  SubnetBPublicRouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: 
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref SubnetB
+
+  # Create an Internet Gateway
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  # Attach the internet gateway to the VPC
+  VPCInternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties: 
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+
+  ###################
+  # Security Groups
+  ###################
+
+  # Allow traffic to the load balancer from the internet,
+  # and from the load balancer to the ECS containers.
+  ServiceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: 'Security group for blue-green-cfn service'
+      SecurityGroupEgress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic by default
+          IpProtocol: "-1"
+      VpcId: !Ref VPC
+
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: 'Security group for the load balancer'
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          Description: Allow from anyone on production traffic port 80
+          FromPort: 80
+          IpProtocol: tcp
+          ToPort: 80
+        - CidrIp: 0.0.0.0/0
+          Description: Allow from anyone on test traffic ports 9000 - 9002
+          FromPort: 9000
+          IpProtocol: tcp
+          ToPort: 9002
+      VpcId: !Ref VPC
+
+  LoadBalancerSecurityGroupToServiceSecurityGroupEgress:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !GetAtt LoadBalancerSecurityGroup.GroupId
+      IpProtocol: tcp
+      Description: Load balancer to target
+      DestinationSecurityGroupId: !GetAtt ServiceSecurityGroup.GroupId
+      FromPort: 80
+      ToPort: 80
+
+  LoadBalancerSecurityGroupToServiceSecurityGroupIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      Description: Load balancer to target
+      FromPort: 80
+      GroupId: !GetAtt ServiceSecurityGroup.GroupId
+      SourceSecurityGroupId: !GetAtt LoadBalancerSecurityGroup.GroupId
+      ToPort: 80
+
+  ServiceLogGroup:
+    Type: AWS::Logs::LogGroup
+
+  #########
+  # Roles
+  #########
+
+  # Task role defines the policy that the ECS tasks will have, i.e. the code running in the containers.
+  # By default, the task role below has no permissions.
+  # Task execution role provides permissions to ECS to run the tasks, like pulling the image from ECR
+  # and pushing logs to CloudWatch Logs.
+  ServiceTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+        Version: "2012-10-17"
+
+  ServiceTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+        Version: "2012-10-17"
+
+  ServiceTaskExecutionRolePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Action:
+              - ecr:BatchCheckLayerAvailability
+              - ecr:GetDownloadUrlForLayer
+              - ecr:BatchGetImage
+            Resource: !Sub arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/${EcrRepoName}
+          - Effect: Allow
+            Action: ecr:GetAuthorizationToken
+            Resource: "*"
+          - Effect: Allow
+            Action:
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: !GetAtt ServiceLogGroup.Arn
+        Version: "2012-10-17"
+      PolicyName: !Sub ${AWS::StackName}-ServiceTaskExecutionRolePolicy
+      Roles:
+        - !Ref ServiceTaskExecutionRole
+
+
+
+  #######
+  # ELB 
+  #######
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Join ['-', [!Sub ${AWS::StackName}, 'ELB']]
+      Scheme: internet-facing
+      SecurityGroups:
+        - !GetAtt LoadBalancerSecurityGroup.GroupId
+      Subnets:
+        - !Ref SubnetA
+        - !Ref SubnetB
+      Type: application
+
+  # Target groups:
+  # We need two target groups that the ECS containers can be
+  # registered to.  CodeDeploy will shift traffic between these
+  # two target groups.
+  ServiceTargetGroupBlue:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub ${AWS::StackName}-tg-1
+      HealthCheckIntervalSeconds: 5
+      HealthCheckPath: /health
+      HealthCheckProtocol: HTTP
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      HealthCheckTimeoutSeconds: 4
+      TargetGroupAttributes:
+        - Key: 'deregistration_delay.timeout_seconds'
+          Value: 5
+      Port: 80
+      Protocol: HTTP
+      TargetType: ip
+      VpcId: !Ref VPC
+
+  ServiceTargetGroupGreen:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub ${AWS::StackName}-tg-2
+      HealthCheckIntervalSeconds: 5
+      HealthCheckPath: /health
+      HealthCheckProtocol: HTTP
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      HealthCheckTimeoutSeconds: 4
+      TargetGroupAttributes:
+        - Key: 'deregistration_delay.timeout_seconds'
+          Value: 5
+      Port: 80
+      Protocol: HTTP
+      TargetType: ip
+      VpcId: !Ref VPC
+
+  # Listeners:
+  # CodeDeploy will shift traffic from blue to green and vice-versa
+  # in both the production and test listeners.
+  # The production listener is used for normal, production traffic.
+  # The test listener is used for test traffic, like integration tests
+  # which can run as part of a CodeDeploy deployment hook prior to
+  # traffic being shifted in the production listener.
+  ProductionListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          ForwardConfig:
+            TargetGroups:
+              - TargetGroupArn: !Ref ServiceTargetGroupBlue
+                Weight: 100
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+
+  TestListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          ForwardConfig:
+            TargetGroups:
+              - TargetGroupArn: !Ref ServiceTargetGroupBlue
+                Weight: 100
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 9000
+      Protocol: HTTP
+
+
+  ########
+  # ECS
+  ########
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: 'Cluster'
+
+  TaskDefinitionBlue:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      ContainerDefinitions:
+        - Essential: true
+          Image: !Ref ImageURI
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref ServiceLogGroup
+              awslogs-stream-prefix: Service
+              awslogs-region: !Ref AWS::Region
+          Name: web
+          PortMappings:
+            - ContainerPort: 80
+              Protocol: tcp
+      Cpu: "256"
+      TaskRoleArn: !GetAtt ServiceTaskRole.Arn
+      ExecutionRoleArn: !GetAtt ServiceTaskExecutionRole.Arn
+      Family: !Ref AWS::StackName
+      Memory: "512"
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+
+  TaskSetBlue:
+    Type: AWS::ECS::TaskSet
+    Properties:
+      Cluster: !Ref Cluster
+      Service: !Ref Service
+      Scale:
+        Unit: PERCENT
+        Value: 100
+      TaskDefinition: !Ref TaskDefinitionBlue
+      LaunchType: FARGATE
+      LoadBalancers:
+        - ContainerName: web
+          ContainerPort: 80
+          TargetGroupArn: !Ref ServiceTargetGroupBlue
+      NetworkConfiguration:
+        AwsVpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !GetAtt ServiceSecurityGroup.GroupId
+          Subnets:
+            - !Ref SubnetA
+            - !Ref SubnetB
+      PlatformVersion: 1.4.0
+
+  Service:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster: !Ref Cluster
+      DesiredCount: 3
+      DeploymentController:
+        Type: EXTERNAL
+    DependsOn:
+      - ServiceTargetGroupBlue
+      - ServiceTargetGroupGreen
+      - ProductionListener
+      - TestListener
+
+  PrimaryTaskSet:
+    Type: AWS::ECS::PrimaryTaskSet
+    Properties:
+      Cluster: !Ref Cluster
+      Service: !Ref Service
+      TaskSetId: !GetAtt TaskSetBlue.Id
+
+
+  # Alarms:
+  # These resources alarm on unhealthy hosts and HTTP 500s at the target group level.
+  # Note that stack updates will *not* automatically rollback based on these alarms.
+  # After the stack is created, the alarms need to manually be configured as rollback
+  # triggers on the stack.
+  # Directions: https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/using-cfn-rollback-triggers.html
+  UnhealthyHostsAlarmBlue:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${AWS::StackName}-Unhealthy-Hosts-Blue
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      EvaluationPeriods: 2
+      Dimensions:
+        - Name: TargetGroup
+          Value: !GetAtt ServiceTargetGroupBlue.TargetGroupFullName
+        - Name: LoadBalancer
+          Value: !GetAtt LoadBalancer.LoadBalancerFullName
+      MetricName: UnHealthyHostCount
+      Namespace: AWS/ApplicationELB
+      Period: 300
+      Statistic: Average
+      Threshold: 1
+
+  Http5xxAlarmBlue:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${AWS::StackName}-Http-500-Blue
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      EvaluationPeriods: 1
+      Dimensions:
+        - Name: TargetGroup
+          Value: !GetAtt ServiceTargetGroupBlue.TargetGroupFullName
+        - Name: LoadBalancer
+          Value: !GetAtt LoadBalancer.LoadBalancerFullName
+      MetricName: HTTPCode_Target_5XX_Count
+      Namespace: AWS/ApplicationELB
+      Period: 300
+      Statistic: Sum
+      Threshold: 1
+
+  UnhealthyHostsAlarmGreen:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${AWS::StackName}-Unhealthy-Hosts-Green
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      EvaluationPeriods: 2
+      Dimensions:
+        - Name: TargetGroup
+          Value: !GetAtt ServiceTargetGroupGreen.TargetGroupFullName
+        - Name: LoadBalancer
+          Value: !GetAtt LoadBalancer.LoadBalancerFullName
+      MetricName: UnHealthyHostCount
+      Namespace: AWS/ApplicationELB
+      Period: 300
+      Statistic: Average
+      Threshold: 1
+
+  Http5xxAlarmGreen:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub ${AWS::StackName}-Http-500-Green
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      EvaluationPeriods: 1
+      Dimensions:
+        - Name: TargetGroup
+          Value: !GetAtt ServiceTargetGroupGreen.TargetGroupFullName
+        - Name: LoadBalancer
+          Value: !GetAtt LoadBalancer.LoadBalancerFullName
+      MetricName: HTTPCode_Target_5XX_Count
+      Namespace: AWS/ApplicationELB
+      Period: 300
+      Statistic: Sum
+      Threshold: 1
+
+Outputs:
+  ServiceURL:
+    Value:
+      Fn::Join:
+        - ""
+        - - http://
+          - Fn::GetAtt:
+              - LoadBalancer
+              - DNSName
+  ServiceDomain:
+    Value:
+      Fn::GetAtt:
+        - LoadBalancer
+        - DNSName

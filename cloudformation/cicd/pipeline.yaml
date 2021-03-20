@@ -4,14 +4,13 @@ Description: The CloudFormation template for the CodePipeline.
 Parameters:
   ServiceName:
     Type: String
-    # Default: user-service
   GithubUserName:
     Type: String
   GithubRepo:
-    Type: String # blue-green-fargate
+    Type: String
   GithubBranch:
     Type: String
-    Default: "master"
+    Default: main
   GithubOAuthToken:
     Type: String
     Description: OAuth-Token for GitHub-Access

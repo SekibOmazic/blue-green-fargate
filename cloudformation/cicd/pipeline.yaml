@@ -102,7 +102,7 @@ Resources:
       ArtifactStore:
         Location: !Join ["-", [!Ref ServiceName, !Ref "AWS::AccountId", "s3bucket"]]
         Type: S3
-      Name: !Join ["-", [!Ref ServiceName, !Ref "AWS::AccountId", "CodePipeLine"]]
+      Name: !Join ["-", [!Ref ServiceName, "pipeLine"]]
       RestartExecutionOnUpdate: False
       RoleArn: !GetAtt CodePipelineExecutionRole.Arn
 
@@ -156,7 +156,9 @@ Resources:
                 - Name: build-output-artifacts
               Configuration:
                 ActionMode: CREATE_UPDATE
-                Capabilities: CAPABILITY_NAMED_IAM
+                Capabilities: 
+                  - CAPABILITY_NAMED_IAM
+                  - CAPABILITY_AUTO_EXPAND # needed when using template macros
                 # Pass parameter values to cf-template.yaml for deployment
                 ParameterOverrides: !Sub |
                   {

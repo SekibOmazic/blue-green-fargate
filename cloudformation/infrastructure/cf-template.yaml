@@ -234,7 +234,7 @@ Resources:
   LoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
-      Name: !Join ['-', [!Sub ${AWS::StackName}, 'ELB']]
+      Name: !Join ['-', [!Ref AWS::StackName, 'ELB']]
       Scheme: internet-facing
       SecurityGroups:
         - !GetAtt LoadBalancerSecurityGroup.GroupId

@@ -31,19 +31,25 @@ docker run -it -p 80:80 --rm users-api:latest
 
 ## Deploy to AWS
 
-### Prerequisite
+### From the terminal
 
-Before you start, please change GithubUserName default value in `cicd/pipeline.yaml`
+Put the name of you github repo:
 
-### Steps
+```
+SERVICE_NAME=<GITHUB_REPO_NAME>
+```
 
-1. First you need to provide access from GitHub to AWS via AccessToken. Please refer to [the github documentation] (https://docs.github.com/en/github/authenticating-to-github/creating-a-personal-access-token).
+And then create the pipeline stack:
 
-2. Now that you have an access token from GitHub, you need to store it in AWS SSM Parameter Store. Login to your AWS Account (AWS Console) and navigate to Systems Manager (SSM) and click on Parameter Store. Create a parameter with the name `/github/token` and as value use the access token from github.
-
-3. Navigate to Cloudformation and create a new stack. Upload the template (cicd/pipeline.yaml) and give it some name. I prefer adding `pipeline` suffix e.g. `user-service-pipeline`. Make sure you allow the Cloudformation to create the IAM Role on your behalf!
-
-4. Hit the "Create Stack". This will create the stack with the codepipeline which will build the service and create another AWS Stack using `infrastructure/cf-template.yaml`.
+```
+aws cloudformation create-stack --stack-name ${SERVICE_NAME}-pipeline \
+    --template-body file://$PWD/cloudformation/cicd/pipeline.yaml \
+    --parameters ParameterKey=ServiceName,ParameterValue=${SERVICE_NAME} \
+                 ParameterKey=GithubUserName,ParameterValue=<GITHUB_USERNAME> \
+                 ParameterKey=GithubRepo,ParameterValue=${SERVICE_NAME} \
+                 ParameterKey=GitHubToken,ParameterValue=<OAUTHTOKEN> \
+    --capabilities CAPABILITY_NAMED_IAM
+```
 
 ## Test your Deployment
 
@@ -55,4 +61,10 @@ After the CodePipeline has finished, Fargate Cluster should be up and running no
 
 ```
 curl http://<DNS_FROM_PRREVIOUS_STEP>/user
+```
+
+or point your browser to
+
+```
+http://<DNS_FROM_PRREVIOUS_STEP>
 ```

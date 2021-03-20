@@ -92,7 +92,7 @@ Resources:
       Source:
         Type: CODEPIPELINE
         # This file (buildspec.yaml in source code) contains commands to Create and Push a docker image to the ECR_REPOSITORY_URI
-        BuildSpec: cicd/buildspec.yaml
+        BuildSpec: cloudformation/cicd/buildspec.yaml
 
   # Create CodePipeline with 3 stages (Source, Build and Deploy)
   Pipeline:

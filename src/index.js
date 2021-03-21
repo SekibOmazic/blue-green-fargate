@@ -12,7 +12,7 @@ const page = `
   <title>Blue-Green deployment</title>
 </head>
 
-<body style="background-color: cornflakeblue;">
+<body style="background-color: cornflowerblue;">
   <h1 style="color: white; text-align: center;">
     Hello from AWS Fargate
   </h1>

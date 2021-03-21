@@ -31,7 +31,7 @@ docker run -it -p 80:80 --rm users-api:latest
 
 ## Deploy to AWS
 
-### From the terminal
+### Create stack
 
 Put the name of you github repo:
 
@@ -51,7 +51,7 @@ aws cloudformation create-stack --stack-name ${SERVICE_NAME}-pipeline \
     --capabilities CAPABILITY_NAMED_IAM
 ```
 
-## Test your Deployment
+### Test your deployment
 
 After the CodePipeline has finished, Fargate Cluster should be up and running now.
 
@@ -60,11 +60,46 @@ After the CodePipeline has finished, Fargate Cluster should be up and running no
 2. Using DNS address you just obtained run:
 
 ```
-curl http://<DNS_FROM_PRREVIOUS_STEP>/user
+curl http://<DNS_OF_THE_ELB>/user
 ```
 
 or point your browser to
 
 ```
-http://<DNS_FROM_PRREVIOUS_STEP>
+http://<DNS_OF_THE_ELB>
+```
+
+### Deploy Lambda Hook
+
+TODO: checkout codedeploy-lifecycle-event-hooks repo
+Deploy the stack:
+
+```
+npm install
+
+aws cloudformation package \
+  --template-file template.yaml \
+  --output-template-file packaged-template.yaml \
+  --s3-bucket <S3 bucket for storing the Lambda function code>
+
+aws cloudformation deploy \
+  --region us-east-1 \
+  --template-file packaged-template.yaml \
+  --stack-name BlueGreenBackendHooksTest \
+  --tags project=blue-green-fargate \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --parameter-overrides BackendDomain=<DNS_OF_THE_ELB>
+```
+
+### Configure rollback alarms
+
+```
+AWS_ACCOUNT_ID=`aws sts get-caller-identity --query Account --output text`
+
+aws cloudformation update-stack \
+   --region us-east-1 \
+   --stack-name ${SERVICE_NAME} \
+   --use-previous-template \
+   --capabilities CAPABILITY_IAM \
+   --rollback-configuration "RollbackTriggers=[{Arn=arn:aws:cloudwatch:us-east-1:$AWS_ACCOUNT_ID:alarm:${STACK_NAME}-Unhealthy-Hosts-Blue,Type=AWS::CloudWatch::Alarm},{Arn=arn:aws:cloudwatch:us-east-1:$AWS_ACCOUNT_ID:alarm:${STACK_NAME}-Http-500-Blue,Type=AWS::CloudWatch::Alarm},{Arn=arn:aws:cloudwatch:us-east-1:$AWS_ACCOUNT_ID:alarm:${STACK_NAME}-Unhealthy-Hosts-Green,Type=AWS::CloudWatch::Alarm},{Arn=arn:aws:cloudwatch:us-east-1:$AWS_ACCOUNT_ID:alarm:${STACK_NAME}-Http-500-Green,Type=AWS::CloudWatch::Alarm}]"
 ```

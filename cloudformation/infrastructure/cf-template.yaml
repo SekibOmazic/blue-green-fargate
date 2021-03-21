@@ -25,6 +25,9 @@ Hooks:
       AdditionalOptions:
         # After canary period, shift 100% of prod traffic, then wait 2 minutes
         TerminationWaitTimeInMinutes: 2
+      LifecycleEventHooks:
+        # function name is hard coded
+        AfterAllowTestTraffic: CodeDeployHook_-blue-green-fargate-_pre-traffic-hook
       Applications:
         - Target:
             Type: AWS::ECS::Service

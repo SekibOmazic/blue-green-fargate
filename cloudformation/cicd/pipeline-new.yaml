@@ -190,7 +190,7 @@ Resources:
                     "EcrRepoName":  "${ServiceName}",
                     "ContainerPort": "${ContainerPort}"
                   }
-                TemplatePath: build::cloudformation/infrastructure/cf-template.yaml
+                TemplatePath: source::cloudformation/infrastructure/cf-template.yaml
 
         - Name: ExecuteChangeSet
           Actions:

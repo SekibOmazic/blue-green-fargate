@@ -143,9 +143,35 @@ Resources:
               RunOrder: 1
 
         # Deploy the project by executing cf-template.yaml file in the Source code with Cloudformation.
-        - Name: Deploy
+        # - Name: Deploy
+        #   Actions:
+        #     - Name: Deploy
+        #       ActionTypeId:
+        #         Category: Deploy
+        #         Owner: AWS
+        #         Version: 1
+        #         Provider: CloudFormation
+        #       InputArtifacts:
+        #         - Name: source-output-artifacts
+        #         - Name: build-output-artifacts
+        #       Configuration:
+        #         ActionMode: CREATE_UPDATE
+        #         Capabilities: CAPABILITY_AUTO_EXPAND,CAPABILITY_IAM
+        #         RoleArn: !GetAtt  CloudformationExecutionRole.Arn
+        #         StackName: !Ref ServiceName
+        #         # Pass parameter values to cf-template.yaml for deployment
+        #         ParameterOverrides: !Sub |
+        #           {
+        #             "ImageURI" : { "Fn::GetParam" : ["build-output-artifacts", "imageDetail.json", "ImageURI"] },
+        #             "EcrRepoName":  "${ServiceName}",
+        #             "ContainerPort": "${ContainerPort}"
+        #           }
+        #         TemplatePath: source-output-artifacts::cloudformation/infrastructure/cf-template.yaml
+        #       RunOrder: 1
+
+        - Name: CreateChangeSet
           Actions:
-            - Name: Deploy
+            - Name: CreateChangeSet
               ActionTypeId:
                 Category: Deploy
                 Owner: AWS
@@ -155,17 +181,33 @@ Resources:
                 - Name: source-output-artifacts
                 - Name: build-output-artifacts
               Configuration:
-                ActionMode: CREATE_UPDATE
+                ActionMode: CHANGE_SET_REPLACE
                 Capabilities: CAPABILITY_AUTO_EXPAND,CAPABILITY_IAM
-                # Pass parameter values to cf-template.yaml for deployment
+                StackName: !Ref ServiceName
+                ChangeSetName: update
+                RoleArn: !GetAtt  CloudformationExecutionRole.Arn
                 ParameterOverrides: !Sub |
                   {
                     "ImageURI" : { "Fn::GetParam" : ["build-output-artifacts", "imageDetail.json", "ImageURI"] },
                     "EcrRepoName":  "${ServiceName}",
                     "ContainerPort": "${ContainerPort}"
                   }
-                RoleArn:
-                  Fn::GetAtt: [CloudformationExecutionRole, Arn]
-                StackName: !Ref ServiceName
                 TemplatePath: source-output-artifacts::cloudformation/infrastructure/cf-template.yaml
+
+        - Name: ExecuteChangeSet
+          Actions:
+            - Name: ExecuteChangeSet
+              InputArtifacts:
+                - Name: source-output-artifacts
+                - Name: build-output-artifacts
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: '1'
+                Provider: CloudFormation
+              Configuration:
+                ActionMode: CHANGE_SET_EXECUTE
+                Capabilities: CAPABILITY_AUTO_EXPAND,CAPABILITY_IAM
+                StackName: !Ref ServiceName
+                ChangeSetName: update
               RunOrder: 1

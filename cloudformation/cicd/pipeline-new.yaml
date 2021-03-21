@@ -186,7 +186,7 @@ Resources:
                 # Pass parameter values to cf-template.yaml for deployment
                 ParameterOverrides: !Sub |
                   {
-                    "ImageURI" : { "Fn::GetParam" : ["build-output-artifacts", "imageDetail.json", "ImageURI"] },
+                    "ImageURI" : { "Fn::GetParam" : ["build", "imageDetail.json", "ImageURI"] },
                     "EcrRepoName":  "${ServiceName}",
                     "ContainerPort": "${ContainerPort}"
                   }

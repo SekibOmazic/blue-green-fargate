@@ -28,6 +28,10 @@ Hooks:
       LifecycleEventHooks:
         # function name is hard coded
         AfterAllowTestTraffic: CodeDeployHook_-blue-green-fargate-_pre-traffic-hook
+      ServiceRole: !Join
+        - ''
+        - - 'CodeDeployHookRole_'
+          - !Ref EcrRepoName
       Applications:
         - Target:
             Type: AWS::ECS::Service

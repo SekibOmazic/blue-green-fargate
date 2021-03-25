@@ -2,34 +2,46 @@ AWSTemplateFormatVersion: 2010-09-09
 Description: The CloudFormation template for the CodePipeline.
 
 Parameters:
-  ServiceName:
+  GithubUsername:
     Type: String
-  GithubUserName:
-    Type: String
+
   GithubRepo:
     Type: String
+
   GithubBranch:
     Type: String
     Default: main
+
   GithubOAuthToken:
     Type: String
     Description: OAuth-Token for GitHub-Access
-  ContainerPort:
-    Type: Number
-    Default: 80
+
+  DomainName:
+    Type: String
+    Description: service domain name. E.g. api.my-domain.com
+
+  HostedZoneId:
+    Description: The hosted zone that contains the top-level domain
+    Type: AWS::Route53::HostedZone::Id
+    # Default: "Z05489150143R718AB2VF" # taken from Route53 for the domain
+
+  SslCertificateArn:
+    Description: ARN to the certificate in us-east-1 valid for the hosting domain
+    Type: String
+    # Default: "arn:aws:acm:eu-central-1:123456789012:certificate/22220000-aaaa-bbbb-cccc-ddddeeeeffff" # taken from ACM for the certificate
 
 Resources:
   # Create an ECR Repository to store docker images
   Repository:
     Type: AWS::ECR::Repository
     Properties:
-      RepositoryName: !Ref ServiceName
+      RepositoryName: !Ref GithubRepo
 
   # Create an S3 Bucket to store build artifacts
   S3Bucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Join ["-", [!Ref ServiceName, !Ref "AWS::AccountId", "s3bucket"]]
+      BucketName: !Join ["-", [!Ref GithubRepo, !Ref "AWS::AccountId", "s3bucket"]]
 
   # Create Access Role for CodePipeLine
   CodePipelineExecutionRole:
@@ -87,7 +99,7 @@ Resources:
             Value: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${Repository}
           - Name: AWS_ACCOUNT_ID
             Value: !Ref AWS::AccountId
-      Name: !Join ["-", [!Ref ServiceName, !Ref "AWS::AccountId", "BuildProject"]]
+      Name: !Join ["-", [!Ref GithubRepo, !Ref "AWS::AccountId", "BuildProject"]]
       ServiceRole: !Ref CodeBuildExecutionRole
       Source:
         Type: CODEPIPELINE
@@ -100,9 +112,9 @@ Resources:
     DependsOn: S3Bucket
     Properties:
       ArtifactStore:
-        Location: !Join ["-", [!Ref ServiceName, !Ref "AWS::AccountId", "s3bucket"]]
+        Location: !Join ["-", [!Ref GithubRepo, !Ref "AWS::AccountId", "s3bucket"]]
         Type: S3
-      Name: !Join ["-", [!Ref ServiceName, "pipeline"]]
+      Name: !Join ["-", [!Ref GithubRepo, "pipeline"]]
       RestartExecutionOnUpdate: False
       RoleArn: !GetAtt CodePipelineExecutionRole.Arn
 
@@ -119,7 +131,7 @@ Resources:
               Configuration:
                 Repo: !Ref GithubRepo
                 Branch: !Ref GithubBranch
-                Owner: !Ref GithubUserName
+                Owner: !Ref GithubUsername
                 OAuthToken: !Ref GithubOAuthToken
               RunOrder: 1
               OutputArtifacts:
@@ -156,14 +168,16 @@ Resources:
               Configuration:
                 ActionMode: CHANGE_SET_REPLACE
                 Capabilities: CAPABILITY_AUTO_EXPAND,CAPABILITY_IAM
-                StackName: !Ref ServiceName
+                StackName: !Ref GithubRepo
                 ChangeSetName: update
                 RoleArn: !GetAtt  CloudformationExecutionRole.Arn
                 ParameterOverrides: !Sub |
                   {
                     "ImageURI" : { "Fn::GetParam" : ["build-output-artifacts", "imageDetail.json", "ImageURI"] },
-                    "EcrRepoName":  "${ServiceName}",
-                    "ContainerPort": "${ContainerPort}"
+                    "EcrRepoName": "${GithubRepo}",
+                    "DomainName": "${DomainName}"
+                    "SslCertificateArn": "${SslCertificateArn}",
+                    "HostedZoneId": "${HostedZoneId}"
                   }
                 TemplatePath: source-output-artifacts::cloudformation/infrastructure/cf-template.yaml
 
@@ -181,6 +195,6 @@ Resources:
               Configuration:
                 ActionMode: CHANGE_SET_EXECUTE
                 Capabilities: CAPABILITY_AUTO_EXPAND,CAPABILITY_IAM
-                StackName: !Ref ServiceName
+                StackName: !Ref GithubRepo
                 ChangeSetName: update
               RunOrder: 1

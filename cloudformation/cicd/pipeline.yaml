@@ -175,7 +175,7 @@ Resources:
                   {
                     "ImageURI" : { "Fn::GetParam" : ["build-output-artifacts", "imageDetail.json", "ImageURI"] },
                     "EcrRepoName": "${GithubRepo}",
-                    "DomainName": "${DomainName}"
+                    "DomainName": "${DomainName}",
                     "SslCertificateArn": "${SslCertificateArn}",
                     "HostedZoneId": "${HostedZoneId}"
                   }

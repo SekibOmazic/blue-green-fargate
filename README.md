@@ -97,6 +97,13 @@ aws cloudformation update-stack \
    --region us-east-1 \
    --stack-name ${GITHUB_REPO} \
    --use-previous-template \
-   --capabilities CAPABILITY_IAM \
-   --rollback-configuration "RollbackTriggers=[{Arn=arn:aws:cloudwatch:us-east-1:$AWS_ACCOUNT_ID:alarm:${STACK_NAME}-Unhealthy-Hosts-Blue,Type=AWS::CloudWatch::Alarm},{Arn=arn:aws:cloudwatch:us-east-1:$AWS_ACCOUNT_ID:alarm:${STACK_NAME}-Http-500-Blue,Type=AWS::CloudWatch::Alarm},{Arn=arn:aws:cloudwatch:us-east-1:$AWS_ACCOUNT_ID:alarm:${STACK_NAME}-Unhealthy-Hosts-Green,Type=AWS::CloudWatch::Alarm},{Arn=arn:aws:cloudwatch:us-east-1:$AWS_ACCOUNT_ID:alarm:${STACK_NAME}-Http-500-Green,Type=AWS::CloudWatch::Alarm}]"
+   --capabilities CAPABILITY_NAMED_IAM \
+   --parameters \
+        ParameterKey=ImageURI,UsePreviousValue=true \
+        ParameterKey=EcrRepoName,UsePreviousValue=true \
+        ParameterKey=DomainName,UsePreviousValue=true \
+        ParameterKey=HostedZoneId,UsePreviousValue=true \
+        ParameterKey=SslCertificateArn,UsePreviousValue=true \
+   --rollback-configuration "RollbackTriggers=[{Arn=arn:aws:cloudwatch:us-east-1:$AWS_ACCOUNT_ID:alarm:${GITHUB_REPO}-Unhealthy-Hosts-Blue,Type=AWS::CloudWatch::Alarm},{Arn=arn:aws:cloudwatch:us-east-1:$AWS_ACCOUNT_ID:alarm:${GITHUB_REPO}-Http-500-Blue,Type=AWS::CloudWatch::Alarm},{Arn=arn:aws:cloudwatch:us-east-1:$AWS_ACCOUNT_ID:alarm:${GITHUB_REPO}-Unhealthy-Hosts-Green,Type=AWS::CloudWatch::Alarm},{Arn=arn:aws:cloudwatch:us-east-1:$AWS_ACCOUNT_ID:alarm:${GITHUB_REPO}-Http-500-Green,Type=AWS::CloudWatch::Alarm}]"
+
 ```

@@ -7,9 +7,10 @@ app.use(express.json())
 
 const BLUE = 'cornflowerblue'
 const GREEN = 'green'
+const RED = 'red'
 
 // start with the blue background
-const color = GREEN
+const color = RED
 
 const page = `
 <head>

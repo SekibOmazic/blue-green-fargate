@@ -6,7 +6,7 @@ This repo depends on [lambda hook repo](https://github.com/SekibOmazic/codedeplo
 
 ## What it does?
 
-Application uses 2 target groups to shift the traffic between blue (current) and green (next) deployments. After deploying application on AWS (instruction shown below) open 2 browser tabs with
+Application uses 2 target groups to shift the traffic from blue (current) to green (next) environment. After deploying application on AWS (instruction shown below) open 2 browser tabs with
 `https://DOMAIN_NAME` and `https://DOMAIN_NAME:9000`
 Both tabs will show a page with the blue background.
 
@@ -17,7 +17,7 @@ If you want to simulate rollback, try changing the color to red (again, see inde
 
 ## How to run
 
-Just `npm start` and point your browser to `url http://localhost:80/color` to get the current background color as JSON object. Or just load `url http://localhost:80` start page to see it ;-)
+Just `npm start` and point your browser to `http://localhost:80/color` to get the current background color as JSON object. Or just load `http://localhost:80` start page to see it ;-)
 
 Alternatively, you can build the docker image and run it:
 

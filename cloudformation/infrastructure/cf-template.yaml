@@ -15,7 +15,7 @@ Parameters:
   HostedZoneId:
     Description: The hosted zone that contains the top-level domain
     Type: AWS::Route53::HostedZone::Id
-    # Default: "Z05489150143R718AB2VF" # taken from Route53 for the domain
+    # Default: "Z01234150143R718AB2VF" # taken from Route53 for the domain
 
   SslCertificateArn:
     Description: ARN to the certificate in eu-central-1 valid for the hosting domain
@@ -31,7 +31,7 @@ Hooks:
     Type: AWS::CodeDeploy::BlueGreen
     Properties:
       TrafficRoutingConfig:
-       #CustomDeploymentFargateLinear1Of3in1Minutes
+        # CustomDeploymentFargateLinear1Of3in1Minutes
         Type: TimeBasedLinear
         TimeBasedLinear:
           StepPercentage: 34

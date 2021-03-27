@@ -10,7 +10,7 @@ const GREEN = 'green'
 const RED = 'red'
 
 // start with the blue background
-const color = RED
+const color = BLUE
 
 const page = `
 <head>
